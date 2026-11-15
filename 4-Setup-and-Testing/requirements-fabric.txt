@@ -1,0 +1,3 @@
+# Microsoft Fabric Spark runtime provides PySpark and Delta Lake.
+# No pip installs are required for the supplied notebooks in a supported Fabric Spark runtime.
+# Do NOT install pyspark/delta-spark into Fabric unless your runtime specifically requires it.
