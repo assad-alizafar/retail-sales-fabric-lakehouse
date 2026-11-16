@@ -1,0 +1,31 @@
+product_id,product_name,category,list_price
+P001,Wireless Mouse,Electronics,10.73
+P002,USB-C Hub,Electronics,125.00
+P003,Desk Lamp,Electronics,80.86
+P004,Headphones,Electronics,72.54
+P005,Portable Charger,Electronics,91.82
+P006,Keyboard,Electronics,104.15
+P007,Ceramic Mug,Home,27.69
+P008,Storage Basket,Home,86.27
+P009,Cotton Throw,Home,67.32
+P010,Picture Frame,Home,86.41
+P011,Water Bottle,Home,66.92
+P012,Candle,Home,94.67
+P013,Notebook,Office,83.04
+P014,Pen Set,Office,52.86
+P015,Desk Organizer,Office,127.23
+P016,Planner,Office,33.31
+P017,Laptop Stand,Office,88.19
+P018,Stapler,Office,33.80
+P019,Yoga Mat,Lifestyle,51.66
+P020,Travel Pouch,Lifestyle,90.39
+P021,Tote Bag,Lifestyle,121.55
+P022,Fitness Band,Lifestyle,52.93
+P023,Lunch Box,Lifestyle,85.02
+P024,Sunglasses,Lifestyle,113.25
+P025,Phone Case,Accessories,122.31
+P026,Charging Cable,Accessories,57.91
+P027,Keyring,Accessories,96.39
+P028,Screen Protector,Accessories,84.67
+P029,Wallet,Accessories,84.45
+P030,Umbrella,Accessories,62.80

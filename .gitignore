@@ -1,13 +1,6 @@
-.venv/
-__pycache__/
-.pytest_cache/
-*.pyc
 .DS_Store
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
 .env
-.env.*
-!*.env.example
-outputs/local_run/
-data/large/
-*.log
-
-3-Project-Results/local-run/
+.vscode/

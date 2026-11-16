@@ -1,94 +1,89 @@
-# Retail Sales Analytics with Microsoft Fabric | Medallion Lakehouse
+# Retail Sales Lakehouse | Microsoft Fabric Medallion Pipeline
 
-**A data engineering portfolio project turning raw retail orders into validated, analytics-ready sales tables.**  
-**Stack:** Microsoft Fabric · PySpark · Delta Lake · OneLake · SQL · Python · Data Quality
+*A small retail dataset, a late-arriving order correction, and a design that makes data quality visible rather than quietly dropping bad records.*
 
-![Bronze Silver Gold architecture](3-Project-Results/visuals/medallion_architecture.png)
+![Project architecture](assets/architecture.svg)
 
-> **What is demonstrated:** Working synthetic retail data, a locally verified reference implementation, four Fabric-compatible notebooks, quality checks, sample outputs, and a reproducible deployment guide. **Fabric execution is not yet verified**; the screenshots and result charts currently come from the local Python reference pipeline. The Fabric Data Factory pipeline is documented for creation, not included as a deployed pipeline.
+## The business question
 
-## The business problem
+Imagine a retailer receiving daily order exports from its storefront. A sales manager wants reliable answers: **How much did we sell each day? Which products bring in revenue? Which customers buy repeatedly?** The raw CSV exports aren't ready for those questions. They contain string fields, cancellations, returns, a handful of invalid orders, and even a later correction to an order that was already received.
 
-A fictional retailer has customer, product, order and order-item CSV files. Reporting directly on these raw files risks duplicate records, invalid product references, inconsistent customer attributes, and cancelled orders being counted as revenue. This project organizes the data into Bronze (raw), Silver (validated), and Gold (business-ready) layers.
+This portfolio project shows how I would organize that workflow in **Microsoft Fabric**: land source records in Bronze, validate and deduplicate into Silver, publish three Gold marts, and orchestrate the notebooks using a Fabric Data Pipeline.
 
-## What the pipeline delivers
+## What the project includes
 
-| Stage | What happens | Recruiter takeaway |
+| Layer | Fabric objects | Why it exists |
 |---|---|---|
-| **Bronze — ingest** | Load 4 source files and preserve raw fields | Traceable ingestion |
-| **Silver — clean** | Deduplicate IDs, validate quantities and relationships, standardize missing regions | Data quality and reliable joins |
-| **Gold — analyze** | Produce daily sales, product performance, customer 360 | Usable analytics tables |
-| **Quality checks** | Reconcile revenue and validate expected table constraints | Trustworthy results |
+| Source | 4 CSVs in `Files/source/` | Repeatable input for a demo; 150 customers, 30 products, 2 order deliveries |
+| Bronze | `bronze_orders`, `bronze_customers`, `bronze_products` | Preserve original strings, file names, ingestion timestamps |
+| Silver | `silver_orders`, `silver_customers`, `silver_products`, `silver_orders_quarantine` | Typed data, latest-version deduplication, reference checks, rejected-record investigation |
+| Gold | `gold_daily_sales`, `gold_product_performance`, `gold_customer_value` | Business-ready reporting tables |
+| Orchestration | 4 notebook activities in a Fabric pipeline | Ordered runs, monitoring, optional scheduling |
 
-### Results from a reproducible local sample run
+## Data flow and important design choices
 
-| Metric | Value |
-|---|---:|
-| Fictional source orders | **1,800** |
-| Gold datasets | **3** |
-| Planned Fabric Delta tables | **11** |
-| Net revenue from completed orders (synthetic sample) | **$1,467,636.93** |
-| Automated local tests | **6 passing** |
+**Bronze: keep the evidence.** The first ingest contains **1,604** order rows, including four intentionally invalid records. Batch 2 contains **402** rows: 400 new orders, one correction to an existing order, and one invalid quantity. The loader skips a batch if its source filename has already been loaded, so a same-batch rerun does not duplicate Bronze rows.
 
-![Daily net revenue](3-Project-Results/visuals/sample_daily_revenue.png)
+**Silver: make quality inspectable.** Numeric and date strings are cast to proper types; customer and product identifiers must exist; quantity and unit price must be positive; and status must be Completed, Returned, or Cancelled. The latest `updated_at` wins when an `order_id` appears more than once. Invalid orders go into a dedicated quarantine Delta table with a reason.
 
-![Revenue by product category](3-Project-Results/visuals/sample_category_revenue.png)
+**Gold: define revenue deliberately.** Only `Completed` orders contribute to sales revenue. Returned and Cancelled orders are still preserved in Silver for other analyses. Gold marts summarize daily sales, product performance, and customer lifetime revenue.
 
-All metrics and charts represent **synthetic data**, not a real retailer. They have been calculated using the local reference pipeline, not a published Fabric deployment.
+**Tradeoff:** ingestion is incremental, but Silver and Gold are rebuilt from Bronze each run. That is a conscious simplification for a small, understandable portfolio example. For larger volumes I would use change tracking/MERGE and partition-aware processing. Bronze's filename-level idempotency is suitable for immutable demo files, **not** for replacing a file under the same name.
 
-## Explore this repository in 60 seconds
+## Running it in Fabric
 
-| Open this | What you will find |
-|---|---|
-| **[1-Fabric-Notebooks](1-Fabric-Notebooks/)** | The four numbered PySpark notebooks: ingest → clean → Gold tables → checks |
-| **[2-Sample-Retail-Data](2-Sample-Retail-Data/)** | Four understandable, fictional CSV source files |
-| **[3-Project-Results](3-Project-Results/)** | Architecture, charts, and example Gold output tables |
-| **[4-Setup-and-Testing](4-Setup-and-Testing/)** | How to reproduce it, local Python, SQL, configuration and tests |
+1. Create a workspace with Fabric capacity/trial and a Lakehouse named `lh_retail_medallion` (use the standard non-schema Lakehouse option if presented).
+2. Upload all four files from [`data/`](data/) to Lakehouse **Files → source**.
+3. Import the four notebooks from [`notebooks/`](notebooks/). Attach `lh_retail_medallion` as the **default lakehouse** for each notebook. Use a PySpark/Spark notebook, not a Python-only notebook.
+4. Run `01_bronze_ingestion` with `batch_id = "01"`, followed by `02_silver_quality`, `03_gold_marts`, then `04_validation`.
+5. Create `pl_retail_medallion` with **four Notebook activities**, connected **on success** in that same order. Run with `batch_id = "02"` on notebook 01 (set it as a pipeline parameter or set the notebook parameter value). Run the other notebooks normally.
+6. Open the Lakehouse SQL analytics endpoint and execute [`sql/reporting_queries.sql`](sql/reporting_queries.sql). Capture evidence using [`assets/SCREENSHOTS.md`](assets/SCREENSHOTS.md).
 
-**Start with the two charts above**, then open the Gold CSV outputs under [sample-gold-tables](3-Project-Results/sample-gold-tables/). After that, read the [Fabric notebooks](1-Fabric-Notebooks/) if you want to inspect the engineering implementation.
+**Full click-by-click instructions:** see the separate `Fabric_Replication_Guide.docx` delivered alongside this repository. Fabric Runtime 2.0 (Spark 4.1 / Python 3.13) is the current default GA runtime; no external libraries are needed.
 
-## Run the local version
+## Expected validation milestones
 
-Python 3.10+ required. From the repository root:
+| After run | Bronze rows | Distinct order IDs | Expected quarantine | Explanation |
+|---|---:|---:|---:|---|
+| Batch 01 | 1,604 | 1,604 | 4 | Four deliberately malformed records |
+| Batch 02 | 2,006 | 2,005 | 5 | One corrected order ID and one more bad row |
 
-```bash
-python -m pip install -r 4-Setup-and-Testing/requirements-local.txt
-python 4-Setup-and-Testing/local_python/run_local_demo.py --source 2-Sample-Retail-Data --output 3-Project-Results/local-run
-python -m pytest 4-Setup-and-Testing/automated_tests -q
+The actual valid-order and Gold revenue counts are calculated by the Fabric notebooks. Record the observed results after execution rather than claiming a run that has not happened.
+
+## Evidence from the live Fabric run
+
+**Current status:** runnable project supplied; **Fabric execution and screenshots pending**. The image above is a vector architecture diagram, not a Fabric UI capture. After completing the run, replace this status with your run date, results, and the real screenshots listed in [`assets/SCREENSHOTS.md`](assets/SCREENSHOTS.md).
+
+- [Workspace + lakehouse view](assets/SCREENSHOTS.md)
+- [Bronze, quality, and Gold evidence checklist](assets/SCREENSHOTS.md)
+- [Pipeline execution and SQL results checklist](assets/SCREENSHOTS.md)
+
+## Repository map
+
+```text
+fabric-retail-lakehouse/
+├── README.md             # Business story, decisions and run instructions
+├── data/                 # Synthetic CSVs, including an incremental second batch
+├── notebooks/            # Four importable Fabric PySpark notebooks
+├── sql/                  # Business reporting queries
+├── assets/               # Architecture illustration and real screenshot checklist
+└── tests/                # Local input-data sanity check
 ```
 
-The local pipeline generates reproducible CSV tables and a quality report. It deliberately does **not** claim to write Fabric Delta tables.
+## Local input check
 
-## Run the notebooks in Microsoft Fabric
+```bash
+python tests/local_data_checks.py
+```
 
-1. Create a Fabric workspace and Lakehouse with Spark support.
-2. Upload the four CSVs from `2-Sample-Retail-Data/` to the Lakehouse path `Files/source/ecommerce/`.
-3. Import and attach the four numbered notebooks from `1-Fabric-Notebooks/`.
-4. Execute them in order and inspect the Bronze, Silver and Gold Delta tables.
-5. Configure Notebook activities with success dependencies using the [pipeline guide](4-Setup-and-Testing/guides/PIPELINE_SETUP.md).
-6. Run the [sample SQL queries](4-Setup-and-Testing/business_sql/gold_business_queries.sql) and capture genuine Fabric screenshots.
+This local script validates the synthetic source files; **it does not replace the Fabric execution tests** in notebook 04.
 
-Full instructions: **[Fabric deployment guide](4-Setup-and-Testing/guides/FABRIC_SETUP.md)**. For assumptions and data definitions, see the [data dictionary](4-Setup-and-Testing/guides/DATA_DICTIONARY.md).
+## Limitations and next iteration
 
-## Important engineering choices
+This is a synthetic, single-lakehouse, batch-processing demonstration—not a production streaming implementation. It deliberately omits secrets, managed deployment automation, a live business source, and Power BI artifacts. A natural next step would be a full CDC ingestion design, audit/run tables, failure notifications, and a Power BI semantic model built from the Gold layer.
 
-- **Idempotent full refresh**, rather than incorrectly claiming incremental ingestion or CDC.
-- Only **Completed** orders contribute to realized Gold revenue.
-- Intentionally invalid rows are excluded from valid Silver items; a production pipeline should preserve them in a quarantine table.
-- Local Pandas tests and Fabric PySpark code are separate implementations; local success cannot establish a Fabric runtime result.
-- The activity configuration is a **design specification**, not a ready-to-import Fabric Data Factory pipeline export.
+## References
 
-## Honest resume description
-
-**Retail Sales Analytics — Microsoft Fabric Medallion Lakehouse (Portfolio Project)**  
-*PySpark · Delta Lake · Fabric Lakehouse · Data Validation · SQL*
-
-- Developed a reproducible retail medallion architecture with four PySpark notebooks covering Bronze ingestion, Silver cleansing, Gold business marts, and data-quality checks.
-- Transformed four fictional retail datasets into three analytics-ready Gold datasets with revenue reconciliation, referential checks, and automated local validation.
-- Documented Fabric Lakehouse deployment and Notebook activity orchestration for runtime verification in a Fabric workspace.
-
-**After successfully executing the solution in Fabric**, replace the last point with a truthful statement of the actual orchestration you deployed and include screenshots in `3-Project-Results/visuals/screenshots/`.
-
----
-
-**Note for recruiters:** This is a self-directed portfolio demonstration with synthetic data. It is not represented as a production client engagement. [MIT License](LICENSE).
+- [Microsoft: Fabric Runtime 2.0](https://learn.microsoft.com/en-us/fabric/data-engineering/runtime-2-0)
+- [Microsoft: Load data into a lakehouse with a notebook](https://learn.microsoft.com/en-us/fabric/data-engineering/lakehouse-notebook-load-data)
+- [Microsoft: Notebook activity for Fabric pipelines](https://learn.microsoft.com/en-us/fabric/data-factory/notebook-activity)
