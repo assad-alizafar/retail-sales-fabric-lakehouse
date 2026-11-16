@@ -1,6 +1,9 @@
-.DS_Store
+# Local notebook state and development files
 .ipynb_checkpoints/
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
 .env
-.vscode/
+.DS_Store
+Thumbs.db
+*.log
